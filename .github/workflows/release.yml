@@ -11,13 +11,13 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: pip install pyinstaller .
       - run: pyinstaller --onefile --console --name glassbox-win-x64 glassbox/app.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: glassbox-win-x64
           path: dist/glassbox-win-x64.exe
@@ -25,14 +25,14 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: pip install pyinstaller .
       - run: pyinstaller --onefile --console --name glassbox-linux-x64 glassbox/app.py
       - run: tar -czf glassbox-linux-x64.tar.gz -C dist glassbox-linux-x64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: glassbox-linux-x64
           path: glassbox-linux-x64.tar.gz
@@ -44,7 +44,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
       - run: >
