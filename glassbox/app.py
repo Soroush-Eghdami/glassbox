@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
 
-import stats
+from glassbox import stats
 
 
 def gig(n):
@@ -323,5 +323,10 @@ class Glassbox(App):
         self._wake.set()
 
 
-if __name__ == "__main__":
+def main():
+    # console entry point (glassbox command)
     Glassbox().run()
+
+
+if __name__ == "__main__":
+    main()

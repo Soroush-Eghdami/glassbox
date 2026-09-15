@@ -1,6 +1,10 @@
-"""Capture a real terminal shot of glassbox."""
+"""Capture a real terminal shot of glassbox. Run from anywhere."""
 import asyncio
-from app import Glassbox
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from glassbox.app import Glassbox
 
 
 async def main():

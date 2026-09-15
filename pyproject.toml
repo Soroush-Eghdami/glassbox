@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glassbox"
+version = "0.1.0"
+description = "Live terminal system monitor, btop-styled"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "psutil>=7",
+    "textual>=8",
+    "rich>=14",
+    "nvidia-ml-py",
+    "pywin32; platform_system == 'Windows'",
+]
+
+[project.scripts]
+glassbox = "glassbox.app:main"
+
+[tool.setuptools.packages.find]
+include = ["glassbox*"]

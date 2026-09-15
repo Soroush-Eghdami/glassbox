@@ -30,10 +30,28 @@ A live system monitor for your terminal. CPU, memory, disks, network, GPU, NPU, 
 ## Quickstart
 
 ```powershell
-# venv already in the repo — use it, not global python
+# local dev, venv already in the repo — use it, not global python
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
-.\venv\Scripts\python.exe app.py
+.\venv\Scripts\python.exe -m glassbox.app
 ```
+
+Or install it as a real command (any fresh venv):
+
+```powershell
+pip install -e .
+glassbox
+```
+
+## Releases
+
+No PyPI — grab a binary from GitHub Releases:
+
+- `glassbox-win-x64.exe` — Windows, double-click and go
+- `glassbox-linux-x64.tar.gz` — Linux, unpack and run `./glassbox-linux-x64`
+
+Both are built by `.github/workflows/release.yml` (PyInstaller, one per OS).
+Push a `v*` tag to ship. Or build the exe yourself:
+`venv\Scripts\pyinstaller.exe --onefile --console --name glassbox-win-x64 glassbox/app.py`.
 
 ## Keys
 
@@ -46,11 +64,12 @@ A live system monitor for your terminal. CPU, memory, disks, network, GPU, NPU, 
 ## Layout
 
 ```
-app.py            textual shell, panels, poller thread
-stats.py          all collectors (psutil + PDH + NVML + DXGI) + snapshot()
-requirements.txt  pinned deps
-shot.py           re-captures screenshot.svg (venv python shot.py)
-screenshot.svg    real capture of the app
+glassbox/           the package (app.py shell, stats.py collectors)
+scripts/shot.py     re-captures screenshot.svg (venv python scripts/shot.py)
+pyproject.toml      package metadata, deps, `glassbox` console entry
+requirements.txt    pinned dev deps for the local venv
+screenshot.svg      real capture of the app
+.github/workflows/  release CI: windows .exe + linux .tar.gz
 ```
 
 ## Notes
