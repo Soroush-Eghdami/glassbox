@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
 
-from glassbox import stats
+import stats
 
 
 def gig(n):
