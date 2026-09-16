@@ -32,26 +32,32 @@ A live system monitor for your terminal. CPU, memory, disks, network, GPU, NPU, 
 ```powershell
 # local dev, venv already in the repo — use it, not global python
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
-.\venv\Scripts\python.exe -m glassbox.app
+.\venv\Scripts\python.exe app.py
 ```
 
-Or install it as a real command (any fresh venv):
+## Download
+
+No Python, no install — grab a standalone binary from GitHub Releases:
+
+### Windows
+
+1. Download `glassbox-win-x64.exe`
+2. Double-click it — that's it.
 
 ```powershell
-pip install -e .
-glassbox
+.\glassbox-win-x64.exe
 ```
 
-## Releases
+### Linux
 
-No PyPI — grab a binary from GitHub Releases:
+1. Download `glassbox-linux-x64.tar.gz`
+2. Extract it, make it executable, run it:
 
-- `glassbox-win-x64.exe` — Windows, double-click and go
-- `glassbox-linux-x64.tar.gz` — Linux, unpack and run `./glassbox-linux-x64`
-
-Both are built by `.github/workflows/release.yml` (PyInstaller, one per OS).
-Push a `v*` tag to ship. Or build the exe yourself:
-`venv\Scripts\pyinstaller.exe --onefile --console --name glassbox-win-x64 glassbox/app.py`.
+```bash
+tar -xzf glassbox-linux-x64.tar.gz
+chmod +x glassbox-linux-x64
+./glassbox-linux-x64
+```
 
 ## Keys
 
@@ -64,12 +70,11 @@ Push a `v*` tag to ship. Or build the exe yourself:
 ## Layout
 
 ```
-glassbox/           the package (app.py shell, stats.py collectors)
-scripts/shot.py     re-captures screenshot.svg (venv python scripts/shot.py)
-pyproject.toml      package metadata, deps, `glassbox` console entry
-requirements.txt    pinned dev deps for the local venv
-screenshot.svg      real capture of the app
-.github/workflows/  release CI: windows .exe + linux .tar.gz
+app.py            the app shell (UI, layout, keys, 1s poll loop)
+stats.py          all stat collectors (cpu, mem, gpu, npu, procs)
+shot.py           re-captures screenshot.svg (venv python shot.py)
+requirements.txt  pinned dev deps for the local venv
+screenshot.svg    real capture of the app
 ```
 
 ## Notes
