@@ -304,17 +304,34 @@ class SensorBox(Static):
 
 
 class Glassbox(App):
+    TITLE = "◈ glassbox"
+    SUB_TITLE = "live system monitor"
     CSS = """
     Screen { background: #0f1116; }
     #left { width: 44; }
     #right { width: 1fr; }
     CpuBox { height: auto; max-height: 45%; }
-    MemBox, DiskBox, NetBox, GpuBox, SensorBox { height: auto; }
-    #proc-head { height: 3; border: round #2a2f3a; background: #161b24; color: #9aa4b2; }
-    DataTable { height: 1fr; border: round #2a2f3a; background: #11151c; }
+    MemBox, DiskBox, NetBox, GpuBox, NpuBox, SensorBox { height: auto; }
+    NpuBox { display: none; }
+    /* header / footer match the card theme */
+    Header { background: #161b24; color: #9aa4b2; border-bottom: solid #2a2f3a; }
+    Header > .header--title { color: #7dd3fc; text-style: bold; }
+    Header > .header--subtitle { color: #9aa4b2; }
+    Header > .header--clock { color: #9aa4b2; }
+    Footer { background: #161b24; color: #9aa4b2; border-top: solid #2a2f3a; }
+    Footer > .footer--highlight { background: #1e2530; color: #7dd3fc; }
+    Footer > .footer--highlight-key { background: #1e293b; color: #7dd3fc; text-style: bold; }
+    Footer > .footer--key { background: #1e2530; color: #7dd3fc; text-style: bold; }
+    Footer > .footer--description { color: #9aa4b2; }
+    /* processes panel matches the cards */
+    #proc-head { height: 3; border: round #2a2f3a; background: #161b24; color: #9aa4b2; padding: 0 1; }
+    DataTable { height: 1fr; border: round #2a2f3a; background: #11151c; color: #e2e8f0; padding: 0; }
     DataTable > .datatable--header { background: #1e2530; color: #7dd3fc; text-style: bold; }
+    DataTable > .datatable--header-cursor { background: #273244; color: #7dd3fc; text-style: bold; }
     DataTable > .datatable--cursor { background: #1e293b; color: white; }
     DataTable > .datatable--hover { background: #1a2230; }
+    DataTable > .datatable--odd-row { background: #12161d; }
+    DataTable > .datatable--even-row { background: #11151c; }
     """
     BINDINGS = [
         ("q", "quit", "quit"),
