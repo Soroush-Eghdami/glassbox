@@ -1,8 +1,11 @@
 """Live system stats, one place."""
 
+import platform
 import re
 
 import psutil
+
+IS_WINDOWS = platform.system() == "Windows"
 
 try:
     import pynvml
@@ -409,13 +412,17 @@ def _win_stats():
 
 
 def win_gpu():
-    # any-vendor gpu via windows counters, [] if none
+    # any-vendor gpu via windows counters, [] if none (or not windows)
+    if not IS_WINDOWS:
+        return []
     g, _ = _win_stats()
     return g
 
 
 def npu():
     # neural engines live under gpu counters on win11
+    if not IS_WINDOWS:
+        return []
     _, n = _win_stats()
     return n
 
@@ -430,7 +437,12 @@ def _dedupe_gpus(nv, win):
 
 def snapshot(sort_by="cpu"):
     # everything in one call, for the worker thread
-    g, n = _win_stats()
+    # off windows the whole PDH/DXGI/WMI pipeline is skipped outright:
+    # no fake cards, no wasted import attempts every tick.
+    if IS_WINDOWS:
+        g, n = _win_stats()
+    else:
+        g, n = [], []
     try:
         nv = gpu()
     except Exception:
