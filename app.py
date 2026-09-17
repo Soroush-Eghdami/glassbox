@@ -114,36 +114,135 @@ class DiskBox(Static):
         self.update(card("DISK", t, "blue"))
 
 
+def rate(v):
+    # bytes/s -> always one "." decimal so it feels precise
+    v = max(0.0, float(v or 0))
+    if v >= 1024 ** 3:
+        return f"{v / 1024 ** 3:.1f} GB/s"
+    if v >= 1024 ** 2:
+        return f"{v / 1024 ** 2:.1f} MB/s"
+    if v >= 1024:
+        return f"{v / 1024:.1f} KB/s"
+    return f"{v:.0f} B/s"
+
+
+def iface_kind(name):
+    # phys type from the adapter name
+    n = (name or "").lower()
+    if any(k in n for k in ("wi-fi", "wifi", "wlan", "wireless")):
+        return ("Wi-Fi", "cyan")
+    if any(k in n for k in ("ethernet", "eth ", "eth-", "gbe", "realtek pcie", "intel(R) ethernet", "intel ethernet", "lan")):
+        if "wlan" not in n and "wireless" not in n and "wi-fi" not in n and "wifi" not in n:
+            return ("Ethernet", "green")
+    if "cellular" in n or "lte" in n or "5g" in n:
+        return ("Cellular", "magenta")
+    return ("Net", "dim")
+
+
+def _is_virtual(name):
+    n = (name or "").lower()
+    return any(k in n for k in (
+        "loopback", "lo ", "vmware", "virtual", "vethernet", "docker",
+        "tailscale", "vpn", "bluetooth", "isatap", "teredo", "tunnel",
+        "vbox", "hyper-v", "wsl", "bridge"))
+
+
 class NetBox(Static):
-    _prev = None
+    _prev_total = None
+    _prev_nics = {}
     _at = 0.0
 
     def update_box(self, n):
         now = time.time()
+        dt = max(now - self._at, 0.1) if self._at else 1.0
+        total = n.get("total")
+        per_nic = n.get("per_nic") or {}
+        if_stats = n.get("if_stats") or {}
+
         up_s = down_s = 0.0
-        if n["total"] and self._prev:
-            dt = max(now - self._at, 0.1)
-            down_s = (n["total"].bytes_recv - self._prev.bytes_recv) / dt
-            up_s = (n["total"].bytes_sent - self._prev.bytes_sent) / dt
-        if n["total"]:
-            self._prev, self._at = n["total"], now
+        if total is not None and self._prev_total is not None:
+            down_s = max(0.0, (total.bytes_recv - self._prev_total.bytes_recv) / dt)
+            up_s = max(0.0, (total.bytes_sent - self._prev_total.bytes_sent) / dt)
+        if total is not None:
+            self._prev_total = total
 
-        def rate(v):
-            # bytes/s -> nice string
-            if v > 1024 ** 2:
-                return f"{v / 1024 ** 2:.1f}MB/s"
-            return f"{v / 1024:.0f}KB/s"
+        rows = []  # (kind, color, short, down, up, total_bytes)
+        for name, cur in per_nic.items():
+            prev = self._prev_nics.get(name)
+            if prev is not None and self._at:
+                d = max(0.0, (cur.bytes_recv - prev.bytes_recv) / dt)
+                u = max(0.0, (cur.bytes_sent - prev.bytes_sent) / dt)
+            else:
+                d = u = 0.0
+            st = if_stats.get(name)
+            is_up = st.isup if st is not None else True
+            if not is_up:
+                continue
+            total_b = cur.bytes_recv + cur.bytes_sent
+            if total_b <= 0 and (d + u) <= 0:
+                continue  # never-used adapter, hide
+            if _is_virtual(name) and (d + u) <= 0 and total_b <= 0:
+                continue
+            short = name if len(name) <= 20 else name[:19] + "…"
+            kind, color = iface_kind(name)
+            rows.append((kind, color, short, d, u, cur.bytes_recv + cur.bytes_sent))
+        self._prev_nics = dict(per_nic)
+        self._at = now
 
-        t = grid()
-        t.add_column("k", width=5)
-        t.add_column("v", ratio=1)
-        t.add_row(Text("down", style="bold green"), Text(rate(down_s), style="green"))
-        t.add_row(Text("up", style="bold yellow"), Text(rate(up_s), style="yellow"))
-        self.update(card("NET", t, "green"))
+        rows.sort(key=lambda r: (r[3] + r[4], r[5]), reverse=True)
+        phys = [r for r in rows if not _is_virtual(r[2])]
+        show = (phys or rows)[:3]
+
+        t = Table(show_header=True, header_style="dim", box=None,
+                  pad_edge=False, padding=(0, 1), expand=True)
+        t.add_column("", width=8)
+        t.add_column("iface", ratio=1)
+        t.add_column("down", width=11, justify="right")
+        t.add_column("up", width=11, justify="right")
+        if show:
+            for kind, color, short, d, u, _tb in show:
+                badge = Text(f"{kind}", style=f"bold {color}")
+                nm = Text(short, style="dim")
+                t.add_row(badge, nm,
+                          Text(f"v {rate(d)}", style="green"),
+                          Text(f"^ {rate(u)}", style="yellow"))
+        else:
+            t.add_row(Text("idle", style="dim"), Text("—", style="dim"),
+                      Text(f"v {rate(down_s)}", style="green"),
+                      Text(f"^ {rate(up_s)}", style="yellow"))
+        title = f"NET v {rate(down_s)} ^ {rate(up_s)}"
+        self.update(card(title, t, "green"))
+
+
+def _gpu_rows(t, c):
+    # full name on its own dim line so e.g. "NVIDIA GeForce RTX 4070" never clips
+    tag = (c.get("tag") or "gpu").lower()
+    label = "iGPU" if tag == "igpu" else "GPU"
+    style = "bold green" if tag == "igpu" else "bold red"
+    t.add_row(Text(label, style=style), hbar(c["load"], width=12), pct_txt(c["load"]))
+    mem_total = c.get("mem_total") or 0
+    mem_used = c.get("mem_used") or 0
+    if mem_total:
+        mem_pct = mem_used / mem_total * 100
+        t.add_row(Text("vram", style="dim"), hbar(mem_pct, width=12), pct_txt(mem_pct))
+        t.add_row(Text("", style="dim"),
+                  Text(f"{gig(mem_used)}/{gig(mem_total)}", style="dim"),
+                  Text("", style="dim"))
+    extra = ""
+    if c.get("temp") is not None:
+        try:
+            extra = f" {int(c['temp'])}C"
+        except (TypeError, ValueError):
+            extra = ""
+    if mem_total and extra:
+        # fold temp into the numbers line above would need a rework; keep it simple:
+        pass
+    name = (c.get("name") or "GPU").strip()
+    t.add_row(Text("", style="dim"), Text(name + extra, style="dim"), Text("", style="dim"))
 
 
 class GpuBox(Static):
-    def update_box(self, nv, win, npu):
+    def update_box(self, nv, win):
         t = grid()
         t.add_column("k", width=5)
         t.add_column("bar", ratio=1)
