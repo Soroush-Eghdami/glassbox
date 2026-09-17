@@ -310,15 +310,47 @@ def _fallback_cards():
                 "load": 0.0, "mem_used": 0,
                 "mem_total": v.get("ram", 0), "temp": None,
             })
-    # dedupe, keep order
-    seen, out = set(), []
+    return _merge_same_name(cards)
+
+
+def _norm(name):
+    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+
+
+_GENERIC_TOKS = {"nvidia", "geforce", "amd", "radeon", "intel", "arc",
+                 "laptop", "mobile", "notebook", "gpu", "graphics",
+                 "max", "design", "dynamic", "boost"}
+
+
+def _sig(name):
+    # distinctive tokens only, so "RTX 4060" != "RTX 3060" but identical
+    # names from two sources (NVML vs DXGI vs WMI) match each other
+    toks = set(_norm(name).split()) - _GENERIC_TOKS
+    if toks:
+        return frozenset(toks)
+    return frozenset(_norm(name).split())
+
+
+def _merge_same_name(cards):
+    # two readings can resolve to one adapter (e.g. an unmatched PDH luid
+    # falling back to the WMI name) -> fold them into a single card
+    merged, order = {}, []
     for c in cards:
-        k = (c["name"] or "").lower()
-        if k in seen:
+        key = _sig(c.get("name"))
+        m = merged.get(key)
+        if m is None:
+            merged[key] = dict(c)
+            order.append(key)
             continue
-        seen.add(k)
-        out.append(c)
-    return out
+        m["load"] = max(m.get("load") or 0, c.get("load") or 0)
+        m["mem_used"] = max(m.get("mem_used") or 0, c.get("mem_used") or 0)
+        if (c.get("mem_total") or 0) > (m.get("mem_total") or 0):
+            m["mem_total"] = c.get("mem_total")
+        if len(c.get("name") or "") > len(m.get("name") or ""):
+            m["name"] = c.get("name")
+        if m.get("temp") is None:
+            m["temp"] = c.get("temp")
+    return [merged[k] for k in order]
 
 
 def _win_stats():
@@ -369,6 +401,7 @@ def _win_stats():
             })
     if not cards:
         cards = _fallback_cards()
+    cards = _merge_same_name(cards)
     # stable order: igpu first, then gpu
     cards.sort(key=lambda c: (0 if c.get("tag") == "igpu" else 1, c.get("name") or ""))
     npu = [{"name": npu_name, "load": max(0.0, min(100.0, nload))}] if npu_name else []
@@ -388,30 +421,11 @@ def npu():
 
 
 def _dedupe_gpus(nv, win):
-    # NVML is authoritative for NVIDIA; drop the matching windows twin
-    # so we end up with just igpu + gpu, never duplicates.
-    if not nv:
-        return win
-    nv_keys = set()
-    for c in nv:
-        low = (c.get("name") or "").lower()
-        for tok in low.replace(",", " ").split():
-            if len(tok) >= 4:
-                nv_keys.add(tok)
-    out = []
-    for c in win:
-        low = (c.get("name") or "").lower()
-        if "nvidia" in low or "geforce" in low or "rtx" in low or "gtx" in low:
-            continue  # covered by NVML, skip twin
-        if any(t in low for t in ("intel", "arc", "radeon", "amd")) or c.get("tag") == "igpu":
-            out.append(c)
-            continue
-        # unknown overlap? keep only if its tokens don't match NVML
-        toks = [t for t in low.replace(",", " ").split() if len(t) >= 4]
-        if toks and any(t in nv_keys for t in toks):
-            continue
-        out.append(c)
-    return out
+    # NVML is authoritative; drop the windows twin of the same adapter
+    # (matched by model signature, so a real second card is never dropped).
+    sigs = {_sig(c.get("name")) for c in nv or []}
+    out = [c for c in win or [] if _sig(c.get("name")) not in sigs]
+    return _merge_same_name(out)
 
 
 def snapshot(sort_by="cpu"):
