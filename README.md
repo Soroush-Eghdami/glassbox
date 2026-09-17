@@ -9,8 +9,8 @@ A live system monitor for your terminal. CPU, memory, disks, network, GPU, NPU, 
 - **CPU** — total + per-core `#` bars, clock speed, chip name in the panel corner
 - **MEM / DISK** — btop-style bars with used/total on their own dim line
 - **NET** — live down/up rates
-- **GPU** — NVIDIA via NVML, any-vendor (Intel Arc, AMD, …) via Windows counters, one row per adapter tagged `igpu` / `dgpu`
-- **NPU** — neural-engine load (e.g. Intel AI Boost) from `engtype_Neural` counters
+- **GPU** — NVIDIA via NVML, any-vendor (Intel Arc, AMD, …) via Windows counters, one row per adapter tagged `igpu` / `gpu` (library-first, automatic DXGI/WMI fallback)
+- **NPU** — separate box with neural-engine load (e.g. Intel AI Boost) from `engtype_Neural` counters; hidden entirely when no NPU hardware is found
 - **SENSORS** — battery, temps, fans, uptime fallback on Windows
 - **PROCS** — sortable top-30 table with mini bars (`c` / `m` / `n`)
 - **Smooth** — all stat gathering runs on a background thread, the UI never freezes
@@ -83,4 +83,4 @@ screenshot.svg    real capture of the app
 - Process CPU is normalized to 0–100% across all cores (no 600% ghosts).
 - No NVIDIA card? That path quietly returns `[]`. No NPU? Same deal.
 - Windows-only bits (`win_gpu`, `npu`, `cpu_name`) degrade to empty lists / `"CPU"` anywhere else.
-- `igpu` vs `dgpu`: matched per-adapter via DXGI luids; ≥1GB dedicated VRAM counts as discrete. Software adapters (Basic Render Driver) are skipped.
+- `igpu` vs `gpu`: matched per-adapter via DXGI luids; ≥1GB dedicated VRAM counts as discrete (`gpu`). Software adapters (Basic Render Driver) are skipped. Full adapter names are shown, never clipped to a prefix.
