@@ -26,6 +26,14 @@ def _nvml_start():
     return _nvml_on
 
 
+def _clean_name(name, limit=0):
+    # full device name, just collapse whitespace + strip (R)/(TM) noise
+    n = " ".join((name or "").replace("(R)", "").replace("(TM)", "").split())
+    if limit and len(n) > limit:
+        n = n[: max(0, limit - 1)].rstrip() + "…"
+    return n or "GPU"
+
+
 def cpu():
     # one call only, total = avg of cores
     cores = psutil.cpu_percent(interval=None, percpu=True)
@@ -64,7 +72,7 @@ def disks():
 
 
 def network():
-    # total + per card io
+    # total + per-nic io + link state, for wifi/ethernet split
     try:
         total = psutil.net_io_counters()
     except Exception:
@@ -73,7 +81,11 @@ def network():
         per_nic = psutil.net_io_counters(pernic=True)
     except Exception:
         per_nic = {}
-    return {"total": total, "per_nic": per_nic}
+    try:
+        if_stats = psutil.net_if_stats()
+    except Exception:
+        if_stats = {}
+    return {"total": total, "per_nic": per_nic or {}, "if_stats": if_stats or {}}
 
 
 def sensors():
@@ -108,11 +120,12 @@ def gpu():
             name = pynvml.nvmlDeviceGetName(h)
             if isinstance(name, bytes):
                 name = name.decode("utf-8", "ignore")
+            name = _clean_name(name)
             util = pynvml.nvmlDeviceGetUtilizationRates(h)
             mem = pynvml.nvmlDeviceGetMemoryInfo(h)
             temp = pynvml.nvmlDeviceGetTemperature(h, pynvml.NVML_TEMPERATURE_GPU)
             cards.append({
-                "name": name,
+                "name": name, "tag": "gpu",
                 "load": util.gpu,
                 "mem_used": mem.used,
                 "mem_total": mem.total,
@@ -173,11 +186,11 @@ def _pdh_read():
 
 
 def _win_names():
-    # gpu + npu names, once
+    # gpu + npu names, once. _NPU_NAME stays None when no NPU hardware.
     global _VC, _NPU_NAME
     if _VC is not None:
         return
-    _VC, _NPU_NAME = [], "NPU"
+    _VC, _NPU_NAME = [], None
     try:
         import win32com.client
         w = win32com.client.GetObject("winmgmts:")
@@ -185,13 +198,13 @@ def _win_names():
             ram = o.AdapterRAM
             if ram is not None and ram < 0:
                 ram += 2 ** 32  # signed overflow fix
-            _VC.append({"name": o.Name, "ram": ram or 0})
+            _VC.append({"name": _clean_name(o.Name), "ram": ram or 0})
         for o in w.ExecQuery("SELECT Name FROM Win32_PnPEntity"):
             nm = (o.Name or "").lower()
             if "input" in nm:
                 continue  # skip "USB Input Device"
             if "ai boost" in nm or "npu" in nm or "xdna" in nm or "neural" in nm:
-                _NPU_NAME = o.Name
+                _NPU_NAME = _clean_name(o.Name)
                 break
     except Exception:
         if not _VC:
@@ -246,7 +259,7 @@ def _dxgi_adapters():
             d = _DESC()
             if get(ad.value, ctypes.byref(d)) == 0:
                 _DXGI.append({"low": d.luid.low, "high": d.luid.high,
-                              "name": d.name, "ded": d.ded, "shared": d.shared})
+                              "name": _clean_name(d.name), "ded": d.ded, "shared": d.shared})
             ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p)(avt.contents[2])(ad.value)
             i += 1
         free(fac.value)
@@ -272,12 +285,52 @@ def cpu_name():
     return _CPU_NAME
 
 
-def _win_stats():
-    # one collect per tick, grouped per adapter luid
-    data = _pdh_read()
+def _tag_for(ded):
+    # only two buckets: integrated vs everything else ("gpu")
+    return "gpu" if (ded or 0) >= DGPU_MIN_DED else "igpu"
+
+
+def _fallback_cards():
+    # libraries failed (PDH down) -> still show adapters from DXGI, then WMI
     _win_names()
+    cards = []
+    for a in _dxgi_adapters():
+        if "basic render" in (a["name"] or "").lower():
+            continue
+        cards.append({
+            "name": a["name"], "tag": _tag_for(a["ded"]),
+            "load": 0.0, "mem_used": 0,
+            "mem_total": (a["ded"] or 0) + (a["shared"] or 0),
+            "temp": None,
+        })
+    if not cards:
+        for i, v in enumerate(_VC or []):
+            cards.append({
+                "name": v["name"], "tag": "gpu" if i == 0 and len(_VC or []) == 1 else ("igpu" if i == 0 else "gpu"),
+                "load": 0.0, "mem_used": 0,
+                "mem_total": v.get("ram", 0), "temp": None,
+            })
+    # dedupe, keep order
+    seen, out = set(), []
+    for c in cards:
+        k = (c["name"] or "").lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(c)
+    return out
+
+
+def _win_stats():
+    # library-first, automatic fallback: PDH live values, else DXGI/WMI list
+    _win_names()
+    _dxgi_adapters()  # warm the library cache even if PDH fails
+    data = _pdh_read()
+    npu_name = _NPU_NAME  # None when no NPU hardware
     if data is None:
-        return [], []
+        cards = _fallback_cards()
+        npu = [{"name": npu_name, "load": 0.0}] if npu_name else []
+        return cards, npu
     eng, ded, sh = data
     gload, mem, nload = {}, {}, 0.0
     for k, v in eng.items():
@@ -299,9 +352,8 @@ def _win_stats():
         if a:
             if "basic render" in a["name"].lower():
                 continue  # software adapter, noise
-            tag = "dgpu" if a["ded"] >= DGPU_MIN_DED else "igpu"
             cards.append({
-                "name": a["name"], "tag": tag,
+                "name": a["name"], "tag": _tag_for(a["ded"]),
                 "load": max(0.0, min(100.0, load)),
                 "mem_used": mem.get((hi, lo), 0),
                 "mem_total": a["ded"] + a["shared"],
@@ -315,10 +367,12 @@ def _win_stats():
                 "mem_total": _VC[0]["ram"],
                 "temp": None,
             })
-    if not cards and _VC:
-        cards.append({"name": _VC[0]["name"], "tag": "gpu", "load": 0.0,
-                      "mem_used": 0, "mem_total": _VC[0]["ram"], "temp": None})
-    return cards, [{"name": _NPU_NAME, "load": max(0.0, min(100.0, nload))}]
+    if not cards:
+        cards = _fallback_cards()
+    # stable order: igpu first, then gpu
+    cards.sort(key=lambda c: (0 if c.get("tag") == "igpu" else 1, c.get("name") or ""))
+    npu = [{"name": npu_name, "load": max(0.0, min(100.0, nload))}] if npu_name else []
+    return cards, npu
 
 
 def win_gpu():
@@ -333,9 +387,41 @@ def npu():
     return n
 
 
+def _dedupe_gpus(nv, win):
+    # NVML is authoritative for NVIDIA; drop the matching windows twin
+    # so we end up with just igpu + gpu, never duplicates.
+    if not nv:
+        return win
+    nv_keys = set()
+    for c in nv:
+        low = (c.get("name") or "").lower()
+        for tok in low.replace(",", " ").split():
+            if len(tok) >= 4:
+                nv_keys.add(tok)
+    out = []
+    for c in win:
+        low = (c.get("name") or "").lower()
+        if "nvidia" in low or "geforce" in low or "rtx" in low or "gtx" in low:
+            continue  # covered by NVML, skip twin
+        if any(t in low for t in ("intel", "arc", "radeon", "amd")) or c.get("tag") == "igpu":
+            out.append(c)
+            continue
+        # unknown overlap? keep only if its tokens don't match NVML
+        toks = [t for t in low.replace(",", " ").split() if len(t) >= 4]
+        if toks and any(t in nv_keys for t in toks):
+            continue
+        out.append(c)
+    return out
+
+
 def snapshot(sort_by="cpu"):
     # everything in one call, for the worker thread
     g, n = _win_stats()
+    try:
+        nv = gpu()
+    except Exception:
+        nv = []  # library failed -> windows fallback below covers it
+    g = _dedupe_gpus(nv, g)
     return {
         "cpu": cpu(),
         "cpu_name": cpu_name(),
@@ -343,7 +429,7 @@ def snapshot(sort_by="cpu"):
         "disks": disks(),
         "net": network(),
         "sensors": sensors(),
-        "gpu_nv": gpu(),
+        "gpu_nv": nv,
         "gpu_win": g,
         "npu": n,
         "procs": top_processes(30, sort_by=sort_by),
