@@ -314,11 +314,11 @@ class Glassbox(App):
     MemBox, DiskBox, NetBox, GpuBox, NpuBox, SensorBox { height: auto; }
     NpuBox { display: none; }
     /* header / footer match the card theme */
-    Header { background: #161b24; color: #9aa4b2; border-bottom: solid #2a2f3a; }
+    Header { background: #161b24; color: #9aa4b2; }
     Header > .header--title { color: #7dd3fc; text-style: bold; }
     Header > .header--subtitle { color: #9aa4b2; }
     Header > .header--clock { color: #9aa4b2; }
-    Footer { background: #161b24; color: #9aa4b2; border-top: solid #2a2f3a; }
+    Footer { background: #161b24; color: #9aa4b2; }
     Footer > .footer--highlight { background: #1e2530; color: #7dd3fc; }
     Footer > .footer--highlight-key { background: #1e293b; color: #7dd3fc; text-style: bold; }
     Footer > .footer--key { background: #1e2530; color: #7dd3fc; text-style: bold; }
