@@ -261,6 +261,22 @@ class GpuBox(Static):
         self.update(card(f"GPU {top:.0f}%", t, "red"))
 
 
+class NpuBox(Static):
+    # separate box; hidden entirely when the machine has no NPU
+    def update_box(self, npu):
+        t = grid()
+        t.add_column("k", width=5)
+        t.add_column("bar", ratio=1)
+        t.add_column("pct", width=6, justify="right")
+        top = 0.0
+        for c in npu or []:
+            top = max(top, c.get("load") or 0)
+            t.add_row(Text("load", style="bold magenta"), hbar(c["load"], width=12), pct_txt(c["load"]))
+            t.add_row(Text("", style="dim"), Text((c.get("name") or "NPU").strip(), style="dim"),
+                      Text("", style="dim"))
+        self.update(card(f"NPU {top:.0f}%", t, "magenta"))
+
+
 class SensorBox(Static):
     def update_box(self, s):
         t = grid()
@@ -315,6 +331,7 @@ class Glassbox(App):
                 yield CpuBox()
                 yield MemBox()
                 yield GpuBox()
+                yield NpuBox()
                 yield SensorBox()
             with Vertical(id="right"):
                 yield DiskBox()
@@ -371,7 +388,12 @@ class Glassbox(App):
         for w in self.query(NetBox):
             w.update_box(s["net"])
         for w in self.query(GpuBox):
-            w.update_box(s["gpu_nv"], s["gpu_win"], s["npu"])
+            w.update_box(s["gpu_nv"], s["gpu_win"])
+        for w in self.query(NpuBox):
+            has_npu = bool(s.get("npu"))
+            w.display = has_npu  # no box at all when there is no NPU
+            if has_npu:
+                w.update_box(s["npu"])
         for w in self.query(SensorBox):
             w.update_box(s["sensors"])
         self.query_one("#proc-head", Static).update(
