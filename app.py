@@ -359,11 +359,13 @@ class Glassbox(App):
 
     def on_mount(self):
         t = self.query_one("#procs", DataTable)
+        t.add_column("#", width=4)
         t.add_column("PID", width=8)
-        t.add_column("NAME", width=24)
-        t.add_column("CPU", width=20)
-        t.add_column("MEM", width=20)
+        t.add_column("NAME", width=26)
+        t.add_column("CPU %", width=22)
+        t.add_column("MEM %", width=22)
         t.cursor_type = "row"
+        t.show_cursor = True
         self._sort = "cpu"
         self._stop = threading.Event()
         self._wake = threading.Event()
@@ -413,20 +415,27 @@ class Glassbox(App):
                 w.update_box(s["npu"])
         for w in self.query(SensorBox):
             w.update_box(s["sensors"])
+        arrow = {"cpu": "CPU ▼", "mem": "MEM ▼", "name": "NAME ▼"}.get(self._sort, "CPU ▼")
         self.query_one("#proc-head", Static).update(
-            Text(f"  PROCS  sort:{self._sort}   [c]pu [m]em [n]ame", style="bold #7dd3fc")
+            Text.assemble(
+                ("  ◈ PROCESSES  ", "bold #7dd3fc"),
+                (f"{arrow}   ", "#7dd3fc"),
+                ("[c] cpu  [m] mem  [n] name  [r] refresh  [q] quit", "dim"),
+            )
         )
         t = self.query_one("#procs", DataTable)
         t.clear()
-        for p in s["procs"]:
+        for i, p in enumerate(s["procs"], 1):
             cpu = max(0.0, min(100.0, p.get("cpu_percent") or 0))
             mem = max(0.0, min(100.0, p.get("memory_percent") or 0))
-            cpu_cell = Text.assemble((f"{cpu:5.1f} ", f"bold {lvl(cpu)}"), hmini(cpu))
-            mem_cell = Text.assemble((f"{mem:5.1f} ", f"bold {lvl(mem)}"), hmini(mem))
-            name = str(p.get("name", "?"))[:24]
+            cpu_cell = Text.assemble((f"{cpu:5.1f} ", f"bold {lvl(cpu)}"), hmini(cpu, width=9))
+            mem_cell = Text.assemble((f"{mem:5.1f} ", f"bold {lvl(mem)}"), hmini(mem, width=9))
+            name = str(p.get("name", "?"))[:26]
+            hot = cpu > 20 or mem > 20
             t.add_row(
+                Text(f"{i:>2}", style="#475569"),
                 Text(str(p.get("pid", "?")), style="dim"),
-                Text(name, style="bold white" if cpu > 20 else "white"),
+                Text(name, style="bold white" if hot else "#e2e8f0"),
                 cpu_cell,
                 mem_cell,
             )
