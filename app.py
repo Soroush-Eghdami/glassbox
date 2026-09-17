@@ -5,6 +5,7 @@ import time
 
 import psutil
 from rich import box
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -214,51 +215,44 @@ class NetBox(Static):
         self.update(card(title, t, "green"))
 
 
-def _gpu_rows(t, c):
-    # full name on its own dim line so e.g. "NVIDIA GeForce RTX 4070" never clips
-    tag = (c.get("tag") or "gpu").lower()
-    label = "iGPU" if tag == "igpu" else "GPU"
-    style = "bold green" if tag == "igpu" else "bold red"
-    t.add_row(Text(label, style=style), hbar(c["load"], width=12), pct_txt(c["load"]))
-    mem_total = c.get("mem_total") or 0
-    mem_used = c.get("mem_used") or 0
-    if mem_total:
-        mem_pct = mem_used / mem_total * 100
-        t.add_row(Text("vram", style="dim"), hbar(mem_pct, width=12), pct_txt(mem_pct))
-        t.add_row(Text("", style="dim"),
-                  Text(f"{gig(mem_used)}/{gig(mem_total)}", style="dim"),
-                  Text("", style="dim"))
-    extra = ""
-    if c.get("temp") is not None:
-        try:
-            extra = f" {int(c['temp'])}C"
-        except (TypeError, ValueError):
-            extra = ""
-    if mem_total and extra:
-        # fold temp into the numbers line above would need a rework; keep it simple:
-        pass
-    name = (c.get("name") or "GPU").strip()
-    t.add_row(Text("", style="dim"), Text(name + extra, style="dim"), Text("", style="dim"))
-
-
 class GpuBox(Static):
     def update_box(self, nv, win):
-        t = grid()
-        t.add_column("k", width=5)
-        t.add_column("bar", ratio=1)
-        t.add_column("pct", width=6, justify="right")
-        top = 0.0
         cards = list(nv or []) + list(win or [])
         # stable: integrated first, then discrete
         cards.sort(key=lambda c: (0 if (c.get("tag") or "gpu") == "igpu" else 1,
                                  c.get("name") or ""))
-        for c in cards:
-            top = max(top, c.get("load") or 0)
-            _gpu_rows(t, c)
-        if len(t.rows) == 0:
+        if not cards:
             self.update(card("GPU", Text("no gpu found", style="dim"), "dim"))
             return
-        self.update(card(f"GPU {top:.0f}%", t, "red"))
+        top = max(c.get("load") or 0 for c in cards)
+        parts = []
+        for c in cards:
+            t = grid()
+            t.add_column("k", width=5)
+            t.add_column("bar", ratio=1)
+            t.add_column("pct", width=6, justify="right")
+            tag = (c.get("tag") or "gpu").lower()
+            label = "iGPU" if tag == "igpu" else "GPU"
+            style = "bold green" if tag == "igpu" else "bold red"
+            t.add_row(Text(label, style=style), hbar(c["load"], width=12), pct_txt(c["load"]))
+            mem_total = c.get("mem_total") or 0
+            mem_used = c.get("mem_used") or 0
+            temp = ""
+            if c.get("temp") is not None:
+                try:
+                    temp = f" {int(c['temp'])}C"
+                except (TypeError, ValueError):
+                    temp = ""
+            if mem_total:
+                mem_pct = mem_used / mem_total * 100
+                t.add_row(Text("vram", style="dim"), hbar(mem_pct, width=12), pct_txt(mem_pct))
+                t.add_row(Text("", style="dim"),
+                          Text(f"{gig(mem_used)}/{gig(mem_total)}{temp}", style="dim"),
+                          Text("", style="dim"))
+            parts.append(t)
+            # name gets the full panel width, so long models never wrap mid-table
+            parts.append(Text((c.get("name") or "GPU").strip(), style="dim"))
+        self.update(card(f"GPU {top:.0f}%", Group(*parts), "red"))
 
 
 class NpuBox(Static):
