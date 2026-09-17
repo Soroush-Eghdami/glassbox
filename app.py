@@ -248,29 +248,15 @@ class GpuBox(Static):
         t.add_column("bar", ratio=1)
         t.add_column("pct", width=6, justify="right")
         top = 0.0
-        for c in nv:
-            top = max(top, c["load"])
-            mem_pct = c["mem_used"] / c["mem_total"] * 100 if c["mem_total"] else 0
-            t.add_row(Text("load", style="bold"), hbar(c["load"], width=12), pct_txt(c["load"]))
-            t.add_row(Text("vram", style="dim"), hbar(mem_pct, width=12), pct_txt(mem_pct))
-            t.add_row(Text("", style="dim"), Text(f"{gig(c['mem_used'])}/{gig(c['mem_total'])} {c['name'][:18]}", style="dim"))
-        for c in win:
-            top = max(top, c["load"])
-            tag = c.get("tag", "gpu")
-            style = "bold green" if tag == "igpu" else ("bold red" if tag == "dgpu" else "bold")
-            t.add_row(Text(tag, style=style), hbar(c["load"], width=12), pct_txt(c["load"]))
-            if c["mem_total"]:
-                mem_pct = c["mem_used"] / c["mem_total"] * 100
-                t.add_row(Text("vram", style="dim"), hbar(mem_pct, width=12), pct_txt(mem_pct))
-                t.add_row(Text("", style="dim"), Text(f"{gig(c['mem_used'])}/{gig(c['mem_total'])} {c['name'][:18]}", style="dim"))
-            else:
-                t.add_row(Text("", style="dim"), Text(f"{gig(c['mem_used'])} {c['name'][:18]}", style="dim"))
-        for c in npu:
-            top = max(top, c["load"])
-            t.add_row(Text("npu", style="bold purple"), hbar(c["load"], width=12), pct_txt(c["load"]))
-            t.add_row(Text("", style="dim"), Text(c["name"][:30], style="dim"))
+        cards = list(nv or []) + list(win or [])
+        # stable: integrated first, then discrete
+        cards.sort(key=lambda c: (0 if (c.get("tag") or "gpu") == "igpu" else 1,
+                                 c.get("name") or ""))
+        for c in cards:
+            top = max(top, c.get("load") or 0)
+            _gpu_rows(t, c)
         if len(t.rows) == 0:
-            self.update(card("GPU / NPU", Text("no gpu found", style="dim"), "dim"))
+            self.update(card("GPU", Text("no gpu found", style="dim"), "dim"))
             return
         self.update(card(f"GPU {top:.0f}%", t, "red"))
 
