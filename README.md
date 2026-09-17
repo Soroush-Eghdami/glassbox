@@ -59,6 +59,10 @@ chmod +x glassbox-linux-x64
 ./glassbox-linux-x64
 ```
 
+## Font
+
+glassbox runs in your terminal, so it uses your terminal's font — set it to **Iosevka Nerd Font** for the intended look (e.g. Windows Terminal → Settings → Profiles → Appearance → Font face).
+
 ## Keys
 
 | Key | Action |
